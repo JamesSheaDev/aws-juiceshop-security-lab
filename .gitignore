@@ -1,0 +1,26 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.tfvars
+*.auto.tfvars
+
+# Terraform binary
+terraform
+terraform_*_linux_*
+terraform_*_darwin_*
+terraform_*_windows_*
+
+# AWS
+.aws/
+
+# macOS
+.DS_Store
