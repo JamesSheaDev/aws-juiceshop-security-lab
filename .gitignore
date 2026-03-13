@@ -14,7 +14,6 @@ terraform.tfvars
 *.auto.tfvars
 
 # Terraform binary
-terraform
 terraform_*_linux_*
 terraform_*_darwin_*
 terraform_*_windows_*
