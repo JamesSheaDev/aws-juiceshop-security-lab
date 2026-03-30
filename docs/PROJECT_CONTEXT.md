@@ -1,181 +1,155 @@
 # PROJECT_CONTEXT — OWASP Juice Shop + AWS + Datadog Cloud Security Lab
 
 ## Purpose
-This file is the **canonical, persistent context** for the project.  
-Paste it into ChatGPT at the start of a session (or upload this file) so the assistant always has the same baseline context.
+This file is the **canonical, persistent context** for the project. Load it at the start of any session to give Claude (or any assistant) the baseline context needed to continue work without re-explaining the setup.
+
+---
+
+## Current Status (as of 2026-03-30)
+
+**Active phase:** Pre-Phase 1 — Terraform foundation
+
+| Area | Status |
+|---|---|
+| Terraform backend (S3 state bucket) | Provisioned manually in AWS console |
+| `backend.tf`, `versions.tf`, `providers.tf`, `locals.tf`, `variables.tf` | Written |
+| `vpc.tf` (VPC, subnets, IGW, NAT, routes) | Written — not yet applied |
+| `terraform init` against live backend | Not run |
+| Any AWS resources deployed | None |
+| Datadog integration | Not started |
+
+**Immediate next steps:**
+1. Run `terraform init` to connect to the S3 backend
+2. Run `terraform plan` / `terraform apply` to deploy the VPC
+3. Write and apply remaining Phase 1 Terraform: ECS, ALB, IAM, CloudWatch
 
 ---
 
 ## Project Objective
-Deploy OWASP Juice Shop to AWS using containerized infrastructure, instrument it deeply with Datadog, intentionally exploit known vulnerabilities, detect malicious activity using logs and runtime monitoring, and harden the environment to demonstrate secure cloud-native application practices.
+Deploy OWASP Juice Shop to AWS using containerized infrastructure, instrument it deeply with Datadog, intentionally exploit known vulnerabilities, detect malicious activity using logs and runtime monitoring, and harden the environment — demonstrating secure cloud-native application practices end to end.
 
 ---
 
-## Preferred AWS Architecture (Keep It Practical)
-Default to a simple, realistic design:
+## AWS Architecture
 
-- **AWS ECS (Fargate preferred)** running OWASP Juice Shop container
-- **Application Load Balancer (ALB)** in front of ECS service
-- **VPC**
-  - Public subnets: ALB
-  - Private subnets: ECS tasks
-- **IAM roles** for ECS task execution / task role
-- **CloudWatch Logs** enabled for containers
-- **AWS CloudTrail** enabled (org/account-level if available)
+**Region:** us-east-2 (matches state backend)
 
-Optional expansions (later phases):
-- RDS Postgres (only if adding a custom app/service)
-- AWS WAF (hardening phase)
-- AWS Secrets Manager (hardening phase)
-- GuardDuty (hardening phase)
+```
+Client → ALB (public subnets) → ECS Fargate Service (private subnets)
+                              ↘ CloudWatch Logs → Datadog Logs / SIEM
+ECS Metrics/Events → Datadog Infrastructure
+CloudTrail → Datadog (control plane detections)
+```
 
-**Infrastructure as Code:** Terraform preferred (but not required).
+**Core components:**
+- ECS Fargate running `bkimminich/juice-shop:latest` (port 3000)
+- ALB in public subnets; ECS tasks in private subnets
+- VPC: 10.10.0.0/16 — 2 public (10.10.1/2.0/24), 2 private (10.10.11/12.0/24)
+- Single NAT Gateway (cost-optimized for dev)
+- CloudWatch Logs for container output
+- CloudTrail for control plane auditing
+
+**Later phases add:** Datadog APM sidecar, CWS agent, AWS WAF, Secrets Manager, GuardDuty
+
+**Infrastructure as Code:** Terraform >= 1.10 (AWS provider ~> 5.0)
 
 ---
 
 ## Phase-Based Execution Model
 
 ### Phase 1 — Deploy the Vulnerable App
-- Deploy OWASP Juice Shop “as-is” (intentionally vulnerable).
-- Expose publicly through ALB.
-- Confirm ECS health checks + ALB routing.
-- Confirm logs flow to CloudWatch.
+- Deploy OWASP Juice Shop "as-is" (intentionally vulnerable)
+- Expose publicly through ALB
+- Confirm ECS health checks + ALB routing
+- Confirm logs flow to CloudWatch
 
-**Exit criteria**
+**Exit criteria:**
 - App reachable via ALB DNS
-- ECS service stable
-- Baseline logs present
+- ECS service stable (desired = running)
+- Baseline CloudWatch logs present
 
 ---
 
 ### Phase 2 — Instrument with Datadog
-Enable deep observability:
+**Infrastructure metrics:**
+- ECS/Fargate integration
+- ALB metrics via CloudWatch integration
 
-**Infrastructure**
-- ECS integration
-- Container metrics (ECS/Fargate)
-- ALB metrics (if available via CloudWatch)
-
-**Application**
-- Datadog APM for Node (where applicable)
+**Application:**
+- Datadog APM for Node.js (Juice Shop is Express-based)
 - Distributed tracing + service overview
 
-**Logs**
-- Ingest container logs from CloudWatch
+**Logs:**
+- Container logs: CloudWatch → Datadog (forwarder Lambda)
 - Optional: ALB access logs (S3) + ingestion strategy
 
-**Security**
-- Cloud Workload Security (runtime)
-- Cloud SIEM (log detection)
-- CSPM (posture) for AWS account
+**Security products:**
+- Cloud Workload Security (runtime agent)
+- Cloud SIEM (log-based detections)
+- CSPM (posture scan of AWS account)
 
-**Exit criteria**
-- Metrics visible, traces flowing (if instrumented), logs searchable
-- Security products enabled (as available) and receiving data
+**Exit criteria:**
+- Metrics visible in Datadog
+- Logs searchable in Datadog
+- Security products receiving data
 
 ---
 
 ### Phase 3 — Exploitation & Attack Simulation
-Intentionally exploit OWASP Juice Shop vulnerabilities, e.g.:
+Intentionally exploit Juice Shop vulnerabilities:
 - SQL Injection
 - XSS
 - Authentication bypass / Broken access control
 - Sensitive data exposure
 - Other Juice Shop challenges as applicable
 
-For each exploit, document:
-- What was exploited (challenge/vuln)
-- Steps performed (requests / payloads)
-- What telemetry was generated (logs/traces/runtime events)
-- What Datadog detected vs. missed (gaps)
+For each exploit, document in `docs/ATTACK_LOG.md`:
+- Vulnerability exploited
+- Steps + payloads
+- Telemetry generated (logs / traces / runtime events)
+- What Datadog detected vs. missed
 
 ---
 
 ### Phase 4 — Detection Engineering (Datadog)
 Build detection content:
-- Log-based detections (queries → monitors / SIEM rules)
-- Runtime detections (process/file/network)
-- CloudTrail detections (suspicious IAM/API activity)
-- Dashboards for “attack story” walkthrough
-- Alerts that are actionable (low noise)
+- Log-based SIEM rules (queries → monitors)
+- Runtime detections (process / file / network via CWS)
+- CloudTrail detections (IAM / API anomalies)
+- Dashboards for "attack story" walkthrough
+- Actionable, low-noise alerts
 
-Think like:
-- Attacker
-- SOC analyst
-- Detection engineer
+Document everything in `docs/DETECTIONS.md`.
 
 ---
 
 ### Phase 5 — Hardening & Remediation
-Incrementally secure the stack:
+**App layer:** Input validation, security headers, rate limiting
+**Container layer:** Non-root user, minimal image, drop capabilities, read-only FS
+**AWS layer:** Tight security groups, IAM least privilege, Secrets Manager, AWS WAF, GuardDuty
 
-**App layer**
-- Input validation
-- Security headers (CSP, HSTS)
-- Rate limiting
-- Auth controls (JWT) if custom services are added
-
-**Container layer**
-- Non-root user
-- Minimal base images
-- Drop Linux capabilities
-- Read-only filesystem (where feasible)
-
-**AWS layer**
-- Private subnets for tasks
-- Tight Security Groups + NACLs if needed
-- IAM least privilege
-- Secrets Manager for secrets
-- AWS WAF in front of ALB
-- GuardDuty + CloudTrail monitoring
-
-After each change:
-- Re-test attacks
+After each hardening change:
+- Re-test attacks from Phase 3
 - Confirm detections still trigger
 - Confirm exploitability decreases
 
----
-
-## Optional Expansion Track — “Secure Simple Node App”
-If adding a custom service alongside Juice Shop:
-
-Build:
-- Simple Node/Express API
-- Dockerize
-- Deploy to ECS
-- RDS Postgres
-
-Secure:
-- JWT auth
-- Rate limiting
-- Input validation
-- CSP headers
-- Secrets Manager
-- IAM roles (no hardcoded creds)
-- VPC + private subnets
-- Security groups
-- CloudTrail
-
-Instrument:
-- Datadog APM
-- Datadog Logs
-- CSPM
-- Cloud SIEM
-
-Deliverable:
-- Writeup: what was vulnerable, what was hardened, what Datadog detected
+Document in `docs/HARDENING.md`.
 
 ---
 
-## How ChatGPT Should Help
-Be implementation-focused and specific:
-- Terraform examples when helpful
-- AWS configuration guidance
-- Datadog monitor queries and dashboards
-- Explain telemetry behavior and gaps
-- Explain tradeoffs (security / cost / complexity / demo value)
+## Optional Expansion — Custom Node App
+If adding a secure service alongside Juice Shop:
+- Simple Node/Express API → ECS → RDS Postgres
+- Full Datadog APM + Logs + CSPM instrumentation
+- Demonstrates contrast between vulnerable (Juice Shop) and secured (custom app) services
 
-If context is unclear, ask:
-- What phase are we in?
-- What’s already implemented?
-- Terraform or manual?
+---
+
+## Documentation Map
+| File | Purpose |
+|---|---|
+| `docs/PROJECT_CONTEXT.md` | This file — canonical project context |
+| `docs/ARCHITECTURE.md` | AWS resource checklist, build status, Datadog integration decisions |
+| `docs/ATTACK_LOG.md` | Per-exploit entries: steps, payloads, telemetry, detection gaps |
+| `docs/DETECTIONS.md` | Datadog SIEM rules, CWS rules, CloudTrail detections, dashboards |
+| `docs/HARDENING.md` | Security changes, rationale, tradeoffs, retest results |
